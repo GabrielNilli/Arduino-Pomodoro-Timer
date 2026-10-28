@@ -18,6 +18,8 @@ static Bounce2::Button button;                                      // oggetto b
 static bool awaitingClick = false;
 static volatile int rotationCounter = 0;                            // volatile per impedire l'ottimizzare in memoria dato che viene modificat dall'ISR ed in qualsiasi momento
 
+static int prevTempStep = 0;
+
 // ===============================================================
 //  ENCODER BUTTON
 // ===============================================================
@@ -54,7 +56,7 @@ static void onClkFalling() {                                        // ISR per l
     int currentDt = digitalRead(ENCODER_DT_PIN);
     
     if(currentDt == HIGH) {
-      rotationCounter--;
+        rotationCounter--;
     } else {
         rotationCounter++;
     }
@@ -73,7 +75,16 @@ static void encoderRotationSetup() {
 }
 
 // --------------------------- update ----------------------------
-// static void encoderRotationUpdate() {}                           // tenuta ma commentata solo per coerenza strutturale con altri file
+static void encoderRotationUpdate() {                               // tenuta ma commentata solo per coerenza strutturale con altri file
+    // clk x 2 + dt
+    int tempStep = ((digitalRead(ENCODER_CLK_PIN) * 2) + digitalRead(ENCODER_DT_PIN));
+
+    if(tempStep != prevTempStep){
+        Serial.println(tempStep);
+    }
+
+    prevTempStep = tempStep;
+}                           
 
 // *************************** public ****************************
 int encoderConsumeSteps() {
@@ -94,5 +105,5 @@ void encoderSetup() {
 
 void encoderUpdate() {
     encoderButtonUpdate();
-    // encoderRotationUpdate();
+    encoderRotationUpdate();
 }

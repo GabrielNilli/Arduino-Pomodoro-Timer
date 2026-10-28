@@ -49,13 +49,13 @@ void setup() {
 void loop() {
     // ------------------------- encoder -------------------------
     encoderUpdate();
-    int step = encoderConsumeSteps();
+    // int step = encoderConsumeSteps();
 
-    if (encoderConsumeClick()) {
-        Serial.println("CLICK");
-    }
+    // if (encoderConsumeClick()) {
+    //     Serial.println("CLICK");
+    // }
 
-    if (step != 0) {
-        Serial.println(step);
-    }
+    // if (step != 0) {
+    //     Serial.println(step);
+    // }
 }
