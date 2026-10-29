@@ -3,6 +3,7 @@
 // ===============================================================
 #include <Arduino.h>
 #include <Bounce2.h>
+#include <RotaryEncoder.h>
 #include "encoder.h"
 
 // ===============================================================
@@ -15,10 +16,13 @@ static const uint8_t ENCODER_BUTTON_PIN = 4;
 
 // ---------------------------- utils ----------------------------
 static Bounce2::Button button;                                      // oggetto button per il debounce
-static bool awaitingClick = false;
-static volatile int rotationCounter = 0;                            // volatile per impedire l'ottimizzare in memoria dato che viene modificat dall'ISR ed in qualsiasi momento
+static bool pendingClick = false;
 
-static int prevTempStep = 0;
+// Istanza della libreria di Matthias Hertel (usa lo stile di latch a 4 step standard)
+static RotaryEncoder encoder(ENCODER_CLK_PIN, ENCODER_DT_PIN, RotaryEncoder::LatchMode::FOUR3);
+
+static volatile int pendingSteps = 0;                               // passi accumulati pronti per essere consumati
+static long lastPosition = 0;                                        // tiene traccia dell'ultima posizione letta dall'encoder
 
 // ===============================================================
 //  ENCODER BUTTON
@@ -36,14 +40,14 @@ static void encoderButtonUpdate() {
     button.update();                                                // aggiorniamo lo stato ad inizio di ogni loop
 
     if(button.pressed()) {
-        awaitingClick = true;
+        pendingClick = true;
     }
 }
 
 // *************************** public ****************************
 bool encoderConsumeClick() {                                        // mandiamo se è cliccato con una variabile clone e lo risettiamo a false
-    bool isClicked = awaitingClick;
-    awaitingClick = false;
+    bool isClicked = pendingClick;
+    pendingClick = false;
     return isClicked;
 }
 
@@ -52,47 +56,50 @@ bool encoderConsumeClick() {                                        // mandiamo 
 // ===============================================================
 // *************************** static ****************************
 // ---------------------------- isr ------------------------------
-static void onClkFalling() {                                        // ISR per la rotazione
-    int currentDt = digitalRead(ENCODER_DT_PIN);
-    
-    if(currentDt == HIGH) {
-        rotationCounter--;
-    } else {
-        rotationCounter++;
-    }
+// ISR che delega il controllo dei pin alla libreria Hertel
+static void checkPositionISR() {
+    encoder.tick();
 }
 
 // --------------------------- setup -----------------------------
 static void encoderRotationSetup() {
-    pinMode(ENCODER_CLK_PIN, INPUT);                                // settiamo le modalità dei pin
-    pinMode(ENCODER_DT_PIN, INPUT);
+    // Configurazione pin (la libreria raccomanda INPUT_PULLUP se non hai pull-up esterni)
+    pinMode(ENCODER_CLK_PIN, INPUT_PULLUP);                                
+    pinMode(ENCODER_DT_PIN, INPUT_PULLUP);
 
-    attachInterrupt(                                                // automatizza
-        digitalPinToInterrupt(ENCODER_CLK_PIN),                     // fa capire alla Nano che il pin restituisce interrupt 0
-        onClkFalling,                                               // la funzione richiamata
-        FALLING                                                     // per i pin che vanno da HIGH a LOW
-    );
+    // Sincronizziamo la posizione iniziale
+    encoder.tick();
+    lastPosition = encoder.getPosition();
+
+    // Agganciamo l'ISR ai pin per tracciare la rotazione in tempo reale
+    attachInterrupt(digitalPinToInterrupt(ENCODER_CLK_PIN), checkPositionISR, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(ENCODER_DT_PIN), checkPositionISR, CHANGE);
 }
 
 // --------------------------- update ----------------------------
-static void encoderRotationUpdate() {                               // tenuta ma commentata solo per coerenza strutturale con altri file
-    // clk x 2 + dt
-    int tempStep = ((digitalRead(ENCODER_CLK_PIN) * 2) + digitalRead(ENCODER_DT_PIN));
-
-    if(tempStep != prevTempStep){
-        Serial.println(tempStep);
+static void encoderRotationUpdate() {
+    // Leggiamo la posizione attuale (calcolata in background tramite l'ISR)
+    long currentPosition = encoder.getPosition();
+    
+    if (currentPosition != lastPosition) {
+        // Calcoliamo la differenza di passi (positivo o negativo)
+        int delta = currentPosition - lastPosition;
+        
+        noInterrupts();
+        pendingSteps += delta;
+        interrupts();
+        
+        lastPosition = currentPosition;
     }
-
-    prevTempStep = tempStep;
 }                           
 
 // *************************** public ****************************
 int encoderConsumeSteps() {
-    noInterrupts();                                                 // blocca gli interrupts per evitare errori 
-    int counter = rotationCounter;      
-    rotationCounter = 0;        
+    noInterrupts();                                                 // blocca gli interrupts per evitare conflitti sulla variabile
+    int steps = pendingSteps;      
+    pendingSteps = 0;        
     interrupts();                                                   // sblocca gli interrupts
-    return counter;
+    return steps;
 }
 
 // ===============================================================
