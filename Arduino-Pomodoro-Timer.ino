@@ -5,12 +5,12 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ILI9341.h>
-#include <RTClib.h>
 
 // ------------------------- components --------------------------
 #include "buzzer.h"
 #include "tick.h"
 #include "encoder.h"
+#include "rtc.h"
 
 // ===============================================================
 //  CONFIG
@@ -21,9 +21,6 @@
 // #define TEXT_SIZE 10
 
 // Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
-
-// ----------------------------- rtc -----------------------------
-// RTC_DS1307 rtc;
 
 // ===============================================================
 //  BEEP & TICK FUNCTION
@@ -41,6 +38,7 @@ void setup() {
     buzzerSetup();
     tickSetup();
     encoderSetup();
+    rtcSetup();
 }
 
 // ===============================================================
@@ -57,5 +55,28 @@ void loop() {
 
     if (step != 0) {
         Serial.println(step);
+    }
+
+    // --------------------------- rtc ---------------------------
+    rtcUpdate();
+    uint8_t secs = rtcGetSeconds();
+    uint8_t mins = rtcGetMinutes();
+    uint8_t hours = rtcGetHours();
+
+    static uint8_t lastSecond = 99; 
+
+    if (secs != lastSecond) {
+        if (hours < 10) Serial.print("0");
+        Serial.print(hours);
+        Serial.print(":");
+        
+        if (mins < 10) Serial.print("0");
+        Serial.print(mins);
+        Serial.print(":");
+        
+        if (secs < 10) Serial.print("0");
+        Serial.println(secs);
+
+        lastSecond = secs;
     }
 }
